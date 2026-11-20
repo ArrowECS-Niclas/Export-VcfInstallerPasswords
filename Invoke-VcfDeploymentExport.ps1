@@ -76,6 +76,9 @@ $bashScript = @'
 set -euo pipefail
 umask 077
 
+stage='initializing the exporter'
+trap 'printf "Deployment export failed while %s (exit %s).\n" "$stage" "$?" >&2' ERR
+
 if (( $# > 1 )); then
     printf 'Usage: %s [output.json]\n' "$0" >&2
     exit 2
@@ -96,10 +99,11 @@ if [[ -t 0 ]]; then
     read -r -s -p 'Web server root password: ' web_password
     printf '\n' >&2
 else
+    stage='reading passwords from the guest command'
     password=''
-    IFS= read -r password || [[ -n $password ]]
+    IFS= read -r password || true
     web_password=''
-    IFS= read -r web_password || [[ -n $web_password ]]
+    IFS= read -r web_password || true
 fi
 if [[ -z $password ]]; then
     printf 'No installer password supplied.\n' >&2
@@ -112,6 +116,7 @@ if [[ -z $web_password ]]; then
 fi
 
 # The API is reached directly over loopback, with proxies and curl startup config disabled.
+stage='authenticating to VCF Installer'
 token=$(
     printf '%s' "$password" |
         jq -Rs '{username: "admin@local", password: .}' |
@@ -125,7 +130,9 @@ get_json() {
         "${request[@]}" --header @- "$base/$1"
 }
 
+stage='looking up the latest deployment'
 deployment_id=$(get_json v1/sddcs/latest | jq -er '.id | strings | select(length > 0) | @uri')
+stage='saving the deployment specification on the installer VM'
 tmp=$(mktemp -- "$(dirname -- "$output")/.vcf-deployment.XXXXXXXX")
 askpass=''
 upload_dir=''
@@ -137,6 +144,7 @@ ln -T -- "$tmp" "$output"
 printf 'Saved deployment specification to %s\n' "$output"
 
 # Stage the web copy in a private directory so the installer export stays private.
+stage='preparing the SCP upload'
 upload_dir=$(mktemp -d)
 upload_file="$upload_dir/VCF-Credentials.json"
 install -m 0644 -- "$output" "$upload_file"
@@ -149,7 +157,7 @@ ASKPASS
 chmod 700 "$askpass"
 destination='root@192.168.20.20:/var/www/html/VCF-Credentials.json'
 if ! VCF_SCP_PASSWORD="$web_password" SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE=force \
-    scp -p -o StrictHostKeyChecking=yes -o ConnectTimeout=10 \
+    scp -p -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
         -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1 \
         -- "$upload_file" "$destination" </dev/null; then
     printf 'SCP to %s failed. The export is still at %s on the installer VM.\n' "$destination" "$output" >&2
@@ -157,6 +165,7 @@ if ! VCF_SCP_PASSWORD="$web_password" SSH_ASKPASS="$askpass" SSH_ASKPASS_REQUIRE
 fi
 unset web_password
 printf 'Copied deployment specification to %s\n' "$destination"
+stage='removing the installer copy after upload'
 rm -- "$output"
 printf 'Removed the installer copy at %s\n' "$output"
 '@
@@ -274,7 +283,7 @@ try {
         $encodedWebPassword = [Convert]::ToBase64String($webPasswordBytes)
         $encodedPassword = [Convert]::ToBase64String($passwordBytes)
         $quotedOutputPath = "'" + $GuestOutputPath.Replace("'", "'\''") + "'"
-        $guestCommand = 'umask 077; {{ printf %s {0} | base64 -d; printf "\n"; printf %s {1} | base64 -d; printf "\n"; }} | bash {2} {3}' -f $encodedPassword, $encodedWebPassword, $guestScriptPath, $quotedOutputPath
+        $guestCommand = 'umask 077; {{ printf %s {0} | base64 -d; printf "\n"; printf %s {1} | base64 -d; printf "\n"; }} | bash {2} {3} 2>&1' -f $encodedPassword, $encodedWebPassword, $guestScriptPath, $quotedOutputPath
         try {
             $result = Invoke-VMScript @guestParameters -ScriptType Bash -ScriptText $guestCommand
         } catch {
@@ -287,10 +296,15 @@ try {
         $encodedPassword = $encodedWebPassword = $guestCommand = $null
     }
 
-    if ($result.ScriptOutput) { $result.ScriptOutput.Trim() }
+    $guestOutput = ([string]$result.ScriptOutput).Trim()
     if ($result.ExitCode -ne 0) {
-        throw "The deployment export exited with code $($result.ExitCode)."
+        $message = "The deployment export exited with code $($result.ExitCode)."
+        if ($guestOutput) {
+            $message += [Environment]::NewLine + $guestOutput
+        }
+        throw $message
     }
+    if ($guestOutput) { $guestOutput }
 } finally {
     if ($openedConnection) {
         Disconnect-VIServer -Server $server -Confirm:$false -ErrorAction Continue | Out-Null
