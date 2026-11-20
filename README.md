@@ -2,6 +2,10 @@
 
 [Invoke-VcfDeploymentExport.ps1](./Invoke-VcfDeploymentExport.ps1) exports the latest deployment specification from VMware Cloud Foundation (VCF) Installer and publishes it as `VCF-Credentials.json` on the lab web server. The specification can contain passwords. The PowerCLI script contains the Bash exporter and generates it for each run.
 
+Send bash script to VCF installer -> Execute script on VCF Installer to extract a json file with passwords -> Send json file to local web server to display passwords
+
+Place VCF-Credentials.html on a server, it will the fetch information from the generated json file
+
 ## DISCLAIMER
 **This is a script you ONLY should use in your homelab.**<br> 
 **Under no circumstances should it be used in a production environment!**
