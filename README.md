@@ -88,7 +88,7 @@ Serve [VCF-Credentials.html](./VCF-Credentials.html) alongside `VCF-Credentials.
 
 The page masks passwords by default, but clients that can fetch the JSON can read its contents directly. Restrict access to both the HTML and JSON through the web server or the lab network, and use HTTPS for browser access to the credentials.
 
-![VCF credentials viewer showing masked passwords and copy buttons](docs/images/vcf-credentials.png)
+![VCF credentials viewer showing masked passwords and copy buttons](docs/images/VCF-Credentials.png)
 
 ## Troubleshooting
 
