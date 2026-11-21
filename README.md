@@ -4,7 +4,7 @@
 
 Send bash script to VCF installer -> Execute script on VCF Installer to extract a json file with passwords -> Send json file to local web server to display passwords
 
-Place VCF-Credentials.html on a server, it will the fetch information from the generated json file
+Copy VCF-Credentials.html to a web server, it will the fetch information from the generated json file and show/copy passwords.
 
 ## DISCLAIMER
 **This is a script you ONLY should use in your homelab.**<br> 
